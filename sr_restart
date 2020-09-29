@@ -37,10 +37,10 @@ def get_notFinal_sr():
     return serverrole
 
 def get_notFinal_vm(cluster):
-        sr_list = get_notFinal_sr()
-        for k,v in sr_list.items():
-            if cluster not in k:        #若需要多产品重启，注释 42,43行
-                continue
+    sr_list = get_notFinal_sr()
+    for k,v in sr_list.items():
+        if cluster not in k:        #若需要多产品重启，注释 42,43行
+            continue
         cmd = "curl -s '127.0.0.1:7070/api/v3/column/m.id?m.cluster=%s&m.sr.id=%s'" % (k,v)
         cmd = cmd.replace("#", "%23")
         status, output = commands.getstatusoutput(cmd)

@@ -1,0 +1,67 @@
+#!/usr/bin/env python2
+# -*- coding: utf-8 -*-
+
+import requests
+import json
+import commands
+import sys
+
+
+def get_notFinal_sr():
+
+    url1 = "http://127.0.01:7070/api/v3/column/c.*"  # 内含有2个关键字段c.id   c.project
+    data1 = requests.get(url1, verify=False)
+    if data1.status_code != 200:
+        print('URL1:%s Request failed with status_code:%s!' % (url1, data1.status_code))
+        sys.exit(0)
+    response1 = data1.json()  # 返回的是多个字典组成的列表
+    dictcp = {}
+    for i in response1:
+        if (i['c.id'] != 'default') and (i['c.project'] != 'test_tianji_e2e') and ('mock' not in i['c.id']):
+            dictcp[i['c.id']] = i['c.project']    # 获得每个集群与产品的关系列表，因cluster唯一，取cluster为key
+
+    serverrole = {}
+    for i in dictcp.items():
+        #print i[0],i[1]
+        cmd = "curl -s -k 'https://10.149.1.1/tianji/v1/api/tianji/projects/%s/clusters/%s/getClusterServerRoleMachineFinalState'" % (i[1],i[0])
+        status, output = commands.getstatusoutput(cmd)
+        output_json = json.loads(output)
+        for k,v in output_json["servicesData"].items():
+            if v["isFinal"] == "true":
+                continue
+            for k1,v1 in v["data"].items():
+                if v1["notFinal"] == 1:
+                    #print i[0],k+"."+k1
+                    serverrole[i[0]] = (k+"."+k1)
+    print serverrole
+    return serverrole
+
+def get_notFinal_vm(cluster):
+    sr_list = get_notFinal_sr()
+    for k,v in sr_list.items():
+        if cluster not in k:        #若需要多产品重启，注释 42,43行
+            continue
+        cmd = "curl -s '127.0.0.1:7070/api/v3/column/m.id?m.cluster=%s&m.sr.id=%s'" % (k,v)
+        cmd = cmd.replace("#", "%23")
+        status, output = commands.getstatusoutput(cmd)
+        output_json = json.loads(output)
+        for i in output_json:
+            #print i["m.id"]
+            cmd_restart = "curl -s 'http://127.0.0.1:7070/api/v5/SetMachineSRAction?hostname=%s&serverrole=%s'" \
+                          " -d '{\"action_name\":\"restart\", \"action_status\":\"pending\"}'" % (i["m.id"], v)
+            cmd_restart = cmd_restart.replace("#", "%23")
+            status, output = commands.getstatusoutput(cmd_restart)
+            #print output,type(output),cmd_restart
+            output_json = json.loads(output)
+            if int(output_json["err_code"]) == 0:
+                print "%s restart succ " % output_json["data"][0]["serverrole"]
+
+if __name__ == "__main__":
+
+    param = None
+    if len(sys.argv) > 1:
+        param = sys.argv[1]
+    else:
+        print " please input your cluster "
+        sys.exit(-1)
+    get_notFinal_vm(param)
